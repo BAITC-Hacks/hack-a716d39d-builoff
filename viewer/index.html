@@ -97,6 +97,7 @@
       [['Кластер',node.cluster_id],['Приоритет',node.priority_score.toFixed(3)],['Входящие связи',node.in_deg],['Исходящие связи',node.out_deg],['Получено, KZT',fmt(node.in_kzt)],['Отправлено, KZT',fmt(node.out_kzt)]].forEach(([label,value])=>{const tile=addText(mini,'div','');addText(tile,'strong',value);addText(tile,'span',label);});
       addText(box,'h3','Обоснование');addText(box,'p',node.evidence,'evidence');
       if(node.temporal_evidence){addText(box,'h3','Временные сигналы');addText(box,'p',node.temporal_evidence,'evidence');}
+      if(node.node_summary){addText(box,'h3','Дополнительная гипотеза модели');addText(box,'p',node.node_summary,'evidence');}
       addText(box,'h3','← Плательщики ('+incoming.get(node.id).length+')'); neighbors(box,incoming.get(node.id),'Входящие связи не наблюдаются');
       addText(box,'h3','→ Получатели ('+outgoing.get(node.id).length+')'); neighbors(box,outgoing.get(node.id),'Исходящие связи не наблюдаются');
     }

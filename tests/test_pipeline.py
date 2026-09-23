@@ -20,6 +20,8 @@ class PipelineTests(unittest.TestCase):
         cls.frame = cls.frame.merge(compute_temporal(cls.nodes, cls.tx), on="gid", validate="one_to_one")
         pipeline.assign_roles(cls.frame)
         pipeline.rank_nodes(cls.frame)
+        cls.frame["node_summary"] = ""
+        cls.frame["node_summary_source"] = "deterministic"
         cls.outputs = pipeline.exports(cls.graph, cls.frame, cls.cluster_of)
 
     def test_real_data_and_exports(self):

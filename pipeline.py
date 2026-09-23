@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from cluster_llm import generate_hypotheses
+from node_llm import generate_node_cards
 from temporal import compute_temporal
 
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
@@ -261,7 +262,7 @@ def exports(graph, frame, cluster_of):
                    "depth", "is_seed", "truncated_by_depth", "fast_out_count", "fast_out_kzt",
                    "fast_in_date", "fast_out_date", "sync_days", "sync_max_payers", "sync_date",
                    "sync_kzt", "burst_days", "burst_max_count", "burst_date", "burst_daily_mean",
-                   "temporal_evidence"]].copy()
+                   "temporal_evidence", "node_summary", "node_summary_source"]].copy()
     roles[["role_score", "priority_score"]] = roles[["role_score", "priority_score"]].round(3)
     ordered = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).reset_index(drop=True)
     ranked = ordered.head(20)
@@ -313,6 +314,8 @@ def validate_outputs(outputs, frame):
         raise DataError("output: invalid roles or scores")
     if not roles.evidence.str.len().between(1, 200).all() or set(roles.cluster_id) != set(clusters.cluster_id):
         raise DataError("output: evidence or cluster references invalid")
+    if not roles.node_summary_source.isin(("deterministic", "llm_verified")).all():
+        raise DataError("output: node summary source invalid")
     if clusters.n_nodes.sum() != len(frame) or clusters.n_seed.sum() != int(frame.is_seed.sum()) or (clusters.sum_kzt_internal < 0).any():
         raise DataError("output: cluster summary invalid")
     if clusters.hypothesis.isna().any() or not clusters.hypothesis.str.len().gt(0).all():
@@ -339,6 +342,7 @@ def graph_export(graph, frame):
             "temporal_evidence": row.temporal_evidence,
             "fast_out_count": int(row.fast_out_count), "sync_days": int(row.sync_days),
             "burst_days": int(row.burst_days),
+            "node_summary": row.node_summary, "node_summary_source": row.node_summary_source,
         })
     edges = [
         {"id": "{}-{}".format(src, dst), "source": str(src), "target": str(dst),
@@ -395,6 +399,14 @@ def main(argv=None):
         frame = frame.merge(compute_temporal(nodes, tx), on="gid", validate="one_to_one")
         assign_roles(frame)
         rank_nodes(frame)
+        if args.no_llm:
+            frame["node_summary"] = ""
+            frame["node_summary_source"] = "deterministic"
+            node_status = "Node cards LLM skipped: --no-llm"
+        else:
+            frame, node_status = generate_node_cards(
+                frame, Path(__file__).resolve().parent / ".env"
+            )
         result = exports(graph, frame, cluster_of)
         if args.no_llm:
             llm_status = "LLM skipped: --no-llm"
@@ -416,6 +428,7 @@ def main(argv=None):
     ))
     print("wrote: {}".format(", ".join(str(args.out / name) for name in result)))
     print(llm_status)
+    print(node_status)
     print("elapsed_seconds={:.3f}".format(time.perf_counter() - started))
     return 0
 

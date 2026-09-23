@@ -123,3 +123,22 @@ Mock-тест передал `OPENAI_MODEL` из временного `.env` в 
 проверил `strict: true`, принятие валидных `gid`/метрик и отклонение
 выдуманного `gid` и изменённого числа с возвратом к детерминированному тексту.
 Живой OpenAI-вызов: **NOT_VERIFIED**, потому что ключ не предоставлен.
+
+## Iteration 3 · T3.3
+
+После добавления необязательных карточек полный запуск без `.env` вывел:
+
+```text
+nodes=2248 edges=3119 transactions=4840 seeds=81
+clusters=91 isolated=19 truncated=444 terminal_truncated=0
+wrote: out/nodes_roles.csv, out/clusters.csv, out/top_nodes.csv, out/graph.json
+LLM skipped: OPENAI_API_KEY absent in .env
+Node cards LLM skipped: OPENAI_API_KEY absent in .env
+elapsed_seconds=1.791
+```
+
+`/usr/bin/time -p`: `real 2.17`, `user 2.74`, `sys 8.21`.
+14 локальных тестов прошли. Mock-тест подтвердил модель из `.env` и строгую
+схему; другой тест отклонил чужой `gid` и изменённую входящую сумму.
+В Chrome после изменений найдены три `gid`, отсутствующий `gid` показал
+понятное сообщение; `page_errors 0`. Живой текст модели: **NOT_VERIFIED**.
