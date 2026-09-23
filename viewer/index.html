@@ -32,7 +32,7 @@
     .toolbar button { background:#254456;color:#d7eef4;padding:7px 11px; }
     #graph { flex:1;min-height:570px;background:radial-gradient(circle at center,#173246 0,#0b1a2a 56%,#0a1827 100%); }
     .graph-note { padding:11px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--line); }
-    .detail { padding:22px;overflow:auto;max-height:720px; }
+    .detail { padding:22px; }
     .eyebrow { text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-size:11px;font-weight:700; }
     .search { display:flex;gap:8px;margin:12px 0 8px; }
     input { width:100%;min-width:0;border:1px solid #426276;background:#081825;color:var(--text);border-radius:9px;padding:11px 12px;font:inherit;font-variant-numeric:tabular-nums;outline:none; }
@@ -96,6 +96,7 @@
       const mini=addText(box,'div','','mini');
       [['Кластер',node.cluster_id],['Приоритет',node.priority_score.toFixed(3)],['Входящие связи',node.in_deg],['Исходящие связи',node.out_deg],['Получено, KZT',fmt(node.in_kzt)],['Отправлено, KZT',fmt(node.out_kzt)]].forEach(([label,value])=>{const tile=addText(mini,'div','');addText(tile,'strong',value);addText(tile,'span',label);});
       addText(box,'h3','Обоснование');addText(box,'p',node.evidence,'evidence');
+      if(node.temporal_evidence){addText(box,'h3','Временные сигналы');addText(box,'p',node.temporal_evidence,'evidence');}
       addText(box,'h3','← Плательщики ('+incoming.get(node.id).length+')'); neighbors(box,incoming.get(node.id),'Входящие связи не наблюдаются');
       addText(box,'h3','→ Получатели ('+outgoing.get(node.id).length+')'); neighbors(box,outgoing.get(node.id),'Исходящие связи не наблюдаются');
     }

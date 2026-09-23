@@ -14,6 +14,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from temporal import compute_temporal
+
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
 ROLE_WEIGHT = dict(zip(ROLES, (1.0, 0.9, 0.8, 0.6, 0.3, 0.1)))
 ROLE_PHRASES = {
@@ -77,6 +79,21 @@ def describe_node(row, role):
         text += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
     if row.is_seed:
         text += " У seed вход неполон."
+    if row.temporal_brief:
+        expanded = text + " " + row.temporal_brief + "."
+        if len(expanded) <= 200:
+            return expanded
+        compact = "Вх:{} пл., вых:{} получ., seed:{}, кл:{}. {}.".format(
+            row.in_deg, row.out_deg, row.n_reaching_seed, row.n_other_clusters, ROLE_PHRASES[role]
+        )
+        if role == "transit":
+            compact += " Пропуск {:.0f}%.".format(100 * row.pass_through)
+        compact += " " + row.temporal_brief + "."
+        if row.truncated_by_depth:
+            compact += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
+        if row.is_seed:
+            compact += " У seed вход неполон."
+        return compact
     return text
 
 
@@ -240,7 +257,10 @@ def exports(graph, frame, cluster_of):
     roles = frame[["gid", "role", "role_score", "cluster_id", "priority_score", "evidence",
                    "in_deg", "out_deg", "in_kzt", "out_kzt", "in_tx", "out_tx", "pagerank",
                    "pass_through", "betweenness", "n_reaching_seed", "n_other_clusters",
-                   "depth", "is_seed", "truncated_by_depth"]].copy()
+                   "depth", "is_seed", "truncated_by_depth", "fast_out_count", "fast_out_kzt",
+                   "fast_in_date", "fast_out_date", "sync_days", "sync_max_payers", "sync_date",
+                   "sync_kzt", "burst_days", "burst_max_count", "burst_date", "burst_daily_mean",
+                   "temporal_evidence"]].copy()
     roles[["role_score", "priority_score"]] = roles[["role_score", "priority_score"]].round(3)
     ordered = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).reset_index(drop=True)
     ranked = ordered.head(20)
@@ -313,6 +333,9 @@ def graph_export(graph, frame):
             "in_kzt": round(float(row.in_kzt), 2), "out_kzt": round(float(row.out_kzt), 2),
             "n_reaching_seed": int(row.n_reaching_seed),
             "truncated_by_depth": bool(row.truncated_by_depth),
+            "temporal_evidence": row.temporal_evidence,
+            "fast_out_count": int(row.fast_out_count), "sync_days": int(row.sync_days),
+            "burst_days": int(row.burst_days),
         })
     edges = [
         {"id": "{}-{}".format(src, dst), "source": str(src), "target": str(dst),
@@ -365,6 +388,7 @@ def main(argv=None):
         nodes, edges, tx = load_validate(args.data)
         graph, frame = build_features(nodes, edges)
         cluster_of = cluster_graph(graph, frame)
+        frame = frame.merge(compute_temporal(nodes, tx), on="gid", validate="one_to_one")
         assign_roles(frame)
         rank_nodes(frame)
         result = exports(graph, frame, cluster_of)
