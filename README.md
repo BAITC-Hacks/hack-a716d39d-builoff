@@ -22,7 +22,7 @@ AML-аналитику известен 81 исходный клиент, а и�
 | Циклы, цепочки, дробление и устойчивость | [EVIDENCE: I4](docs/EVIDENCE.md), живой запуск и тест | [structural.py](structural.py) |
 | Проверяемые LLM-тексты для 8 кластеров и 5 узлов | [EVIDENCE: этап 5](docs/EVIDENCE.md), живой запуск и mock тест | [cluster_llm.py](cluster_llm.py), [node_llm.py](node_llm.py) |
 | Отдельный read-only CLI-ассистент по готовому графу: шесть function tools, сверка каждого `gid` и числа | [EVIDENCE: I5](docs/EVIDENCE.md), три live-вопроса и тест без модели | [ask.py](ask.py), [test_ask.py](tests/test_ask.py) |
-| Локальная панель ассистента с guard и проверкой границ | [EVIDENCE: I6](docs/EVIDENCE.md), пять live-вопросов и policy-тесты; снимок панели ожидается | [serve.py](serve.py), [input_check.py](input_check.py), [viewer/index.html](viewer/index.html) |
+| Локальный ассистент с guard, проверкой границ, историей ответов и переходом по `gid` во вкладку сети | [EVIDENCE: I6–I7](docs/EVIDENCE.md), пять live-вопросов, policy-тесты и присланные пользователем снимки отказов (файлы снимков в репозитории отсутствуют) | [serve.py](serve.py), [input_check.py](input_check.py), [viewer/index.html](viewer/index.html) |
 
 Обязательные файлы: `out/nodes_roles.csv`, `out/clusters.csv`,
 `out/top_nodes.csv`. Дополнительные: `out/graph.json`,
@@ -30,7 +30,10 @@ AML-аналитику известен 81 исходный клиент, а и�
 
 ## Как работает решение
 
-Аналитик запускает расчёт и открывает viewer. Первый в топе —
+Аналитик запускает расчёт и открывает viewer на вкладке «Ассистент».
+История идёт сверху вниз, большое поле вопроса находится внизу. Ответ
+содержит переходы по полным `gid` на вкладку «Сеть», где доступны прежние
+поиск и граф. Первый в топе —
 `gid 100000003684369100`, роль `coordinator`, приоритет `0.779`.
 Экспортированное для его карточки объяснение:
 
@@ -171,14 +174,16 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 CLI читает готовые `out/nodes_roles.csv`, `out/clusters.csv` и
 `out/graph.json`, использует `OPENAI_API_KEY` и `OPENAI_MODEL` из `.env`.
-Та же логика доступна в панели viewer при запуске `serve.py`: локальный
+Та же логика доступна во вкладке «Ассистент» viewer при запуске `serve.py`: локальный
 `POST /api/ask` принимает JSON `{"question":"..."}` и возвращает
 `answer`, `terminal`, `checks`. Перед агентом один структурированный вызов
 модели проверяет prompt injection и границы онтологии (§1, 2, 9).
 `guard` reject или высокий риск и `ontology` reject завершают запрос
 отказом; `clarify` передаёт агенту подсказку. При техническом сбое проверки
 `checks` содержит `skipped` с причиной, а агент продолжает работу. Стадии
-`validate`, `check`, `agent` и бейджи проверок видны под полем вопроса.
+`validate`, `check`, `agent` и бейджи проверок видны в истории под каждым вопросом.
+В ответе `**` отображаются жирным; рядом с каждым полным `gid` есть переход
+«показать в сети», который открывает вкладку «Сеть» с графом и карточкой.
 Его tools: `find_node`, `neighbors`, `top_by_role`, `paths_from_seeds`,
 `cluster_members`, `search_by_metric`. После ответа код сверяет все `gid`
 и числа с фактически возвращёнными результатами tools; при расхождении
