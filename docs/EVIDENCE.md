@@ -268,3 +268,60 @@ ERROR: V-01: cannot read /var/folders/ct/n_qzvymd3svdw94z04cc17rh0000gn/T/tmp7zn
 «Узел 999999999999999999 не найден в предоставленной сети.» (I2).
 Для `gid 999` тот же путь кода ожидает текст с числом 999; свежий
 скриншот пока отсутствует.
+
+### Чистый клон и повтор запуска
+
+Клонирован текущий локальный коммит `58821f6` в новую папку
+`/private/tmp/graph-money-clean-58821f6`. Источник клонирования был
+локальным путём вместо GitHub URL из README; все последующие команды
+раздела «Установка и запуск» выполнены буквально: `python3 -m venv .venv`,
+`pip install -r requirements.txt`, `cp .env.example .env`, расчёт и
+`python3 -m http.server 8000 --bind 127.0.0.1`. Зависимости установились
+с кодом 0. Ключ в скопированном `.env` оставлен плейсхолдером. Фактический
+stdout расчёта:
+
+```text
+nodes=2248 edges=3119 transactions=4840 seeds=81
+clusters=91 isolated=19 truncated=444 terminal_truncated=0
+wrote: out/nodes_roles.csv, out/clusters.csv, out/top_nodes.csv, out/graph.json, out/robustness.csv, out/completeness.md
+robustness: top_removed components seeds_with_path_before seeds_with_path_after seeds_lost_path share_all_seeds_lost_pct
+robustness: 5 108 23 21 2 2.47
+robustness: 10 177 23 20 3 3.70
+robustness: 20 240 23 11 12 14.81
+LLM skipped: OPENAI_API_KEY absent in .env
+Node cards LLM skipped: OPENAI_API_KEY absent in .env
+elapsed_seconds=5.438
+```
+
+`unittest discover -s tests -v` в том же клоне — **17 tests, OK**.
+HTTP: `/viewer/` — `200`, 13 806 байт; `/out/graph.json` — `200`,
+2 134 959 байт. JSON: 2 248 узлов, 3 119 рёбер. Для трёх `gid` выше
+роли и кластеры совпали, число входящих/исходящих рёбер: `24/62`,
+`1/1`, `1/0`. `gid 999` в JSON отсутствует. Поиск в браузере на
+чистом клоне **NOT_VERIFIED** из-за отсутствия подключённого браузера;
+предыдущая браузерная проверка I2 находится выше.
+
+### Приёмка AC-01–05 на текущем коммите
+
+Проверка выгрузок чистого клона напечатала:
+
+```text
+AC-02 2248 2248 True True True 200
+AC-03 100000003684369100 coordinator in 24 out 62 reach 9 depth 0 cut False pass 2.2317260830113845
+AC-03 100000000850297100 transit in 1 out 1 reach 1 depth 2 cut False pass 1.0
+AC-03 100000004265639100 peripheral in 1 out 0 reach 7 depth 4 cut True pass 0.0
+AC-04 91 2248 81 91 True
+AC-05-data 20 20 True 2248 3119
+```
+
+| Критерий | Статус | Основание |
+|---|---|---|
+| AC-01 | PASS | чистый клон, три CSV одной командой за 5,438 с |
+| AC-02 | PASS | 2 248 уникальных `gid`, обязательные поля и диапазоны, максимум `evidence` 200 |
+| AC-03 | PASS | три `gid` выше со структурными метриками, порогами и оговоркой об обрыве |
+| AC-04 | PASS | 91 кластер покрывает 2 248 узлов и 81 seed, гипотезы заполнены |
+| AC-05 | NOT_VERIFIED для свежего браузерного прогона | топ из 20 и направленный JSON проверены, HTTP 200; поиск трёх `gid` был показан в I2, но браузер чистого клона недоступен этому агенту |
+
+Проверка репозитория: `git check-ignore .DS_Store .env` вывела оба имени;
+`.env.example` содержит плейсхолдер `your_key_here`, не содержит строк
+формата `sk-…` и не совпадает с live-ключом из локального `.env`.
