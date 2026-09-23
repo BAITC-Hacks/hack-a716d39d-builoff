@@ -28,7 +28,7 @@
     .toolbar { display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:15px 18px; }
     .toolbar strong { font-size:14px; }
     .toolbar small { color:var(--muted); }
-    .toolbar button, .search button { border:0;background:var(--accent);color:#062128;border-radius:9px;padding:10px 15px;font-weight:700;cursor:pointer; }
+    .toolbar button, .search button, .ask-form button { border:0;background:var(--accent);color:#062128;border-radius:9px;padding:10px 15px;font-weight:700;cursor:pointer; }
     .toolbar button { background:#254456;color:#d7eef4;padding:7px 11px; }
     #graph { flex:1;min-height:570px;background:radial-gradient(circle at center,#173246 0,#0b1a2a 56%,#0a1827 100%); }
     .graph-note { padding:11px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--line); }
@@ -38,6 +38,12 @@
     input { width:100%;min-width:0;border:1px solid #426276;background:#081825;color:var(--text);border-radius:9px;padding:11px 12px;font:inherit;font-variant-numeric:tabular-nums;outline:none; }
     input:focus { border-color:var(--accent);box-shadow:0 0 0 3px #42d5c62c; }
     .message { min-height:24px;color:#f2bc84;font-size:13px;margin:0 0 14px; }
+    .ask-panel { margin:8px 0 22px;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line); }
+    .ask-form { display:flex;gap:8px;margin:10px 0; }
+    .ask-form button:disabled { opacity:.55;cursor:wait; }
+    .ask-status { color:var(--muted);font-size:12px;min-height:20px; }
+    .ask-checks { display:flex;flex-wrap:wrap;gap:6px;margin:7px 0; }
+    .ask-answer { white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.55; }
     .node-head { display:flex;justify-content:space-between;align-items:center;gap:8px; }
     .gid { font:600 19px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;margin:7px 0 10px; }
     .badge { display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:100px;padding:4px 9px;font-size:12px;color:#d4e5f0; }
@@ -63,7 +69,7 @@
     <div class="intro"><div><h2>Связи вокруг узла</h2><p>Введите gid, чтобы увидеть входящие и исходящие переводы.</p></div><div class="stats"><div class="stat"><strong id="total-nodes">—</strong><span>Узлов</span></div><div class="stat"><strong id="total-edges">—</strong><span>Связей</span></div><div class="stat"><strong id="total-clusters">—</strong><span>Кластеров</span></div></div></div>
     <div class="workspace">
       <section class="panel graph-panel" aria-label="Направленная схема"><div class="toolbar"><div><strong id="graph-title">Загрузка сети…</strong><br><small>Стрелка показывает направление перевода</small></div><button id="fit" type="button">Показать все</button></div><div id="graph"></div><div class="graph-note">Центр — выбранный gid; рядом — его непосредственные плательщики и получатели. Перетащите схему или прокрутите для масштаба.</div></section>
-      <aside class="panel detail"><div class="eyebrow">Поиск клиента</div><form class="search" id="search-form"><input id="gid-input" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="gid клиента" placeholder="Введите gid из CSV"><button type="submit">Найти</button></form><p class="message" id="message" role="status"></p><div id="node-detail"></div></aside>
+      <aside class="panel detail"><div class="eyebrow">Поиск клиента</div><form class="search" id="search-form"><input id="gid-input" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="gid клиента" placeholder="Введите gid из CSV"><button type="submit">Найти</button></form><p class="message" id="message" role="status"></p><section class="ask-panel" aria-label="Спросить ассистента"><div class="eyebrow">Спросить ассистента</div><form class="ask-form" id="ask-form"><input id="ask-input" aria-label="Вопрос ассистенту" placeholder="Вопрос о графе переводов"><button id="ask-button" type="submit">Спросить</button></form><div class="ask-status" id="ask-status" role="status">Готов к вопросу</div><div class="ask-checks" id="ask-checks"></div><div class="ask-answer" id="ask-answer"></div></section><div id="node-detail"></div></aside>
     </div>
     <div class="legend" id="legend"></div><p class="legend-note">Роли и приоритеты — структурные гипотезы по ограниченной выборке. Отсутствие исходящих связей за пределами обхода не доказывает конечность потока.</p>
   </main>
@@ -135,6 +141,28 @@
       } catch(error) {$('graph-title').textContent='Сеть не загружена';$('message').textContent=error.message;}
     }
     $('search-form').addEventListener('submit',event=>{event.preventDefault();select($('gid-input').value.trim());});
+    $('ask-form').addEventListener('submit',async event=>{
+      event.preventDefault();
+      const question=$('ask-input').value.trim();
+      if(!question){$('ask-status').textContent='Введите вопрос';return;}
+      $('ask-button').disabled=true;$('ask-answer').textContent='';$('ask-checks').replaceChildren();
+      $('ask-status').textContent='validate';
+      try {
+        $('ask-status').textContent='check';
+        const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})});
+        if([404,405,501].includes(response.status) || !(response.headers.get('Content-Type')||'').includes('application/json'))throw new Error('Запустите python serve.py, чтобы задать вопрос ассистенту.');
+        const result=await response.json();
+        $('ask-status').textContent=result.terminal==='ANSWER'?'agent':result.terminal==='REJECT'?'check':result.terminal==='VALIDATION'?'validate':'Ошибка';
+        $('ask-answer').textContent=result.answer;
+        for(const name of ['guard','ontology'])if(result.checks&&result.checks[name]){
+          const value=result.checks[name];
+          const label=name+': '+(value.status||value.action)+(name==='guard'&&value.injectionRisk?' ('+value.injectionRisk+')':'');
+          const item=addText($('ask-checks'),'span',label,'badge');item.title=value.reason||'';
+        }
+      } catch(error) {
+        $('ask-status').textContent='Недоступен';$('ask-answer').textContent=error.message;
+      } finally {$('ask-button').disabled=false;}
+    });
     $('fit').addEventListener('click',()=>{if(cy)cy.fit(undefined,50);});
     start();
   </script>

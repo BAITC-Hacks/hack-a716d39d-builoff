@@ -22,6 +22,7 @@ AML-аналитику известен 81 исходный клиент, а и�
 | Циклы, цепочки, дробление и устойчивость | [EVIDENCE: I4](docs/EVIDENCE.md), живой запуск и тест | [structural.py](structural.py) |
 | Проверяемые LLM-тексты для 8 кластеров и 5 узлов | [EVIDENCE: этап 5](docs/EVIDENCE.md), живой запуск и mock тест | [cluster_llm.py](cluster_llm.py), [node_llm.py](node_llm.py) |
 | Отдельный read-only CLI-ассистент по готовому графу: шесть function tools, сверка каждого `gid` и числа | [EVIDENCE: I5](docs/EVIDENCE.md), три live-вопроса и тест без модели | [ask.py](ask.py), [test_ask.py](tests/test_ask.py) |
+| Локальная панель ассистента с guard и проверкой границ | [EVIDENCE: I6](docs/EVIDENCE.md), пять live-вопросов и policy-тесты; снимок панели ожидается | [serve.py](serve.py), [input_check.py](input_check.py), [viewer/index.html](viewer/index.html) |
 
 Обязательные файлы: `out/nodes_roles.csv`, `out/clusters.csv`,
 `out/top_nodes.csv`. Дополнительные: `out/graph.json`,
@@ -92,6 +93,10 @@ flowchart LR
 [temporal.py](temporal.py) и [structural.py](structural.py) считают
 детерминированные сигналы. Viewer читает `out/graph.json` через локальный
 HTTP-сервер. Неверный вход завершает CLI с сообщением `V-01`–`V-03`.
+Для панели `serve.py` отдаёт тот же viewer и `out/`, принимает вопрос,
+вызывает [input_check.py](input_check.py) и затем существующий
+[ask.py](ask.py). Проверка и ответ используют `OPENAI_MODEL`; API-ключ
+остаётся на сервере.
 
 ### Масштабирование до 1 млн узлов
 
@@ -133,10 +138,19 @@ python3 -m venv .venv
 python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
+Чтобы пользоваться панелью «Спросить ассистента», вместо этой команды
+запустите сервер из репозитория (после создания `.env` с ключом и моделью):
+
+```sh
+.venv/bin/python serve.py --port 8000 --bind 127.0.0.1
+```
+
 Откройте `http://127.0.0.1:8000/viewer/`. Введите полный 18-значный
 `gid`; клик по соседу открывает его карточку. Стрелки показывают
 направление перевода. Локальный HTTP-сервер нужен для `graph.json`.
-Отдельного production-сервера и Docker нет.
+Обычный `http.server` по-прежнему открывает граф и поиск; панель в этом
+режиме показывает «Запустите python serve.py». Отдельного production-сервера
+и Docker нет.
 
 ## Как проверить решение
 
@@ -147,6 +161,8 @@ python3 -m http.server 8000 --bind 127.0.0.1
 необязательных текстов эксперт получает по договорённости с организаторами.
 Без ключа программа сообщает `LLM skipped` и сохраняет обязательные файлы.
 
+### Ассистент
+
 После расчёта можно задать отдельный вопрос ассистенту:
 
 ```sh
@@ -155,6 +171,14 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 CLI читает готовые `out/nodes_roles.csv`, `out/clusters.csv` и
 `out/graph.json`, использует `OPENAI_API_KEY` и `OPENAI_MODEL` из `.env`.
+Та же логика доступна в панели viewer при запуске `serve.py`: локальный
+`POST /api/ask` принимает JSON `{"question":"..."}` и возвращает
+`answer`, `terminal`, `checks`. Перед агентом один структурированный вызов
+модели проверяет prompt injection и границы онтологии (§1, 2, 9).
+`guard` reject или высокий риск и `ontology` reject завершают запрос
+отказом; `clarify` передаёт агенту подсказку. При техническом сбое проверки
+`checks` содержит `skipped` с причиной, а агент продолжает работу. Стадии
+`validate`, `check`, `agent` и бейджи проверок видны под полем вопроса.
 Его tools: `find_node`, `neighbors`, `top_by_role`, `paths_from_seeds`,
 `cluster_members`, `search_by_metric`. После ответа код сверяет все `gid`
 и числа с фактически возвращёнными результатами tools; при расхождении
