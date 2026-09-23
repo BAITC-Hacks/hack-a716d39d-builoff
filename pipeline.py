@@ -17,6 +17,7 @@ import pandas as pd
 from cluster_llm import generate_hypotheses
 from node_llm import generate_node_cards
 from temporal import compute_temporal
+from structural import add_pattern_evidence, completeness, robustness
 
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
 ROLE_WEIGHT = dict(zip(ROLES, (1.0, 0.9, 0.8, 0.6, 0.3, 0.1)))
@@ -262,7 +263,8 @@ def exports(graph, frame, cluster_of):
                    "depth", "is_seed", "truncated_by_depth", "fast_out_count", "fast_out_kzt",
                    "fast_in_date", "fast_out_date", "sync_days", "sync_max_payers", "sync_date",
                    "sync_kzt", "burst_days", "burst_max_count", "burst_date", "burst_daily_mean",
-                   "temporal_evidence", "node_summary", "node_summary_source"]].copy()
+                   "temporal_evidence", "cycle_count", "repeat_chain_count", "split_tx_count",
+                   "node_summary", "node_summary_source"]].copy()
     roles[["role_score", "priority_score"]] = roles[["role_score", "priority_score"]].round(3)
     ordered = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).reset_index(drop=True)
     ranked = ordered.head(20)
@@ -296,7 +298,7 @@ def exports(graph, frame, cluster_of):
             "cluster_id": int(cluster_id), "n_nodes": len(group), "n_seed": int(group.is_seed.sum()),
             "sum_kzt_internal": round(turnover, 2),
             "top_gids": ",".join(str(gid) for gid in leaders.gid),
-            "hypothesis": "Признаки группы для проверки: {} узлов, {} seed, внутренний оборот {}; "
+            "hypothesis": "Признаки группы для проверки: узлов: {}, {} seed, внутренний оборот {}; "
                           "консолидаторов {}, распределителей {}; крупнейший по приоритету gid {} ({}).".format(
                 len(group), int(group.is_seed.sum()), amount_text(turnover),
                 int((group.role == "consolidator").sum()), int((group.role == "distributor").sum()),
@@ -340,6 +342,9 @@ def graph_export(graph, frame):
             "n_reaching_seed": int(row.n_reaching_seed),
             "truncated_by_depth": bool(row.truncated_by_depth),
             "temporal_evidence": row.temporal_evidence,
+            "cycle_count": int(row.cycle_count),
+            "repeat_chain_count": int(row.repeat_chain_count),
+            "split_tx_count": int(row.split_tx_count),
             "fast_out_count": int(row.fast_out_count), "sync_days": int(row.sync_days),
             "burst_days": int(row.burst_days),
             "node_summary": row.node_summary, "node_summary_source": row.node_summary_source,
@@ -374,6 +379,8 @@ def write_outputs(outputs, out_dir):
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
                 if filename.endswith(".json"):
                     json.dump(table, stream, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+                elif filename.endswith(".md"):
+                    stream.write(table)
                 else:
                     table.to_csv(stream, index=False)
             pending.append((temporary, out_dir / filename))
@@ -399,6 +406,8 @@ def main(argv=None):
         frame = frame.merge(compute_temporal(nodes, tx), on="gid", validate="one_to_one")
         assign_roles(frame)
         rank_nodes(frame)
+        add_pattern_evidence(frame, graph, tx)
+        robustness_table = robustness(graph, frame)
         if args.no_llm:
             frame["node_summary"] = ""
             frame["node_summary_source"] = "deterministic"
@@ -417,8 +426,10 @@ def main(argv=None):
         validate_outputs(result, frame)
         result["graph.json"] = graph_export(graph, frame)
         validate_graph(result["graph.json"], frame, graph)
+        result["robustness.csv"] = robustness_table
+        result["completeness.md"] = completeness(frame, tx)
         write_outputs(result, args.out)
-    except (DataError, OSError, nx.NetworkXException) as exc:
+    except (DataError, OSError, ValueError, nx.NetworkXException) as exc:
         print("ERROR: {}".format(exc), file=sys.stderr)
         return 1
     print("nodes={} edges={} transactions={} seeds={}".format(len(nodes), len(edges), len(tx), int(nodes.is_seed.sum())))
@@ -427,6 +438,9 @@ def main(argv=None):
         int(frame.truncated_by_depth.sum()), int(((frame.role == "terminal") & frame.truncated_by_depth).sum())
     ))
     print("wrote: {}".format(", ".join(str(args.out / name) for name in result)))
+    print("robustness: top_removed components seeds_with_path_before seeds_with_path_after seeds_lost_path share_all_seeds_lost_pct")
+    for row in robustness_table.itertuples(index=False):
+        print("robustness: {} {} {} {} {} {:.2f}".format(*row))
     print(llm_status)
     print(node_status)
     print("elapsed_seconds={:.3f}".format(time.perf_counter() - started))

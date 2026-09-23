@@ -6,6 +6,8 @@ import pandas as pd
 
 import pipeline
 from temporal import compute_temporal
+from structural import add_pattern_evidence, completeness, pattern_counts, robustness
+import networkx as nx
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -20,6 +22,7 @@ class PipelineTests(unittest.TestCase):
         cls.frame = cls.frame.merge(compute_temporal(cls.nodes, cls.tx), on="gid", validate="one_to_one")
         pipeline.assign_roles(cls.frame)
         pipeline.rank_nodes(cls.frame)
+        add_pattern_evidence(cls.frame, cls.graph, cls.tx)
         cls.frame["node_summary"] = ""
         cls.frame["node_summary_source"] = "deterministic"
         cls.outputs = pipeline.exports(cls.graph, cls.frame, cls.cluster_of)
@@ -68,6 +71,58 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(row.fast_out_count, 1)
         self.assertEqual(row.sync_max_payers, 2)
         self.assertEqual(row.burst_max_count, 3)
+
+    def test_structural_patterns_on_small_graph(self):
+        graph = nx.DiGraph()
+        graph.add_edges_from([(1, 2, {"n_tx": 3}), (2, 3, {"n_tx": 2}),
+                              (3, 1, {"n_tx": 1}), (2, 4, {"n_tx": 1})])
+        tx = pd.DataFrame([(src, 2, "2026-07-02", amount) for src, amount in
+                           ((1, 5000), (3, 5500), (4, 6000))] +
+                          [(1, 2, "2026-07-03", 5500)],
+                          columns=["src", "dst", "date", "sum_kzt"])
+        cycles, chains, splits = pattern_counts(graph, tx)
+        self.assertEqual([cycles[i] for i in (1, 2, 3, 4)], [1, 1, 1, 0])
+        self.assertEqual([chains[i] for i in (1, 2, 3, 4)], [1, 1, 1, 0])
+        self.assertEqual([splits[i] for i in (1, 2, 3, 4)], [0, 3, 0, 0])
+        long_cycle = nx.DiGraph((i, i + 1) for i in range(10, 16))
+        long_cycle.add_edge(16, 10)
+        nx.set_edge_attributes(long_cycle, 1, "n_tx")
+        self.assertEqual(pattern_counts(long_cycle, tx)[0], {})
+        frame = pd.DataFrame({"gid": [1, 2, 3, 4], "evidence": ["Признак."] * 4,
+                              "in_deg": [1] * 4, "out_deg": [1] * 4,
+                              "n_reaching_seed": [1] * 4, "n_other_clusters": [0] * 4,
+                              "role": ["transit"] * 4,
+                              "truncated_by_depth": [False] * 4, "is_seed": [False] * 4})
+        add_pattern_evidence(frame, graph, tx)
+        self.assertIn("Цикл≤6: 1", frame.loc[0, "evidence"])
+        self.assertIn("Дробление, tx: 3", frame.loc[1, "evidence"])
+        self.assertNotIn("Цикл≤6", frame.loc[3, "evidence"])
+
+    def test_robustness_path_loss_uses_original_targets(self):
+        graph = nx.DiGraph([(1, 2), (2, 3), (4, 3)])
+        frame = pd.DataFrame({"gid": [1, 2, 3, 4], "is_seed": [True, False, False, True],
+                              "role": ["peripheral", "transit", "consolidator", "peripheral"],
+                              "priority_score": [0.1, 0.9, 0.8, 0.2]})
+        result = robustness(graph, frame, (1,)).iloc[0]
+        self.assertEqual((result.components, result.seeds_with_path_before,
+                          result.seeds_with_path_after, result.seeds_lost_path), (2, 2, 1, 1))
+        self.assertEqual(result.share_all_seeds_lost_pct, 50.0)
+        lone = nx.DiGraph()
+        lone.add_node(7)
+        lone_frame = pd.DataFrame({"gid": [7], "is_seed": [True],
+                                   "role": ["coordinator"], "priority_score": [0.9]})
+        self.assertEqual(robustness(lone, lone_frame, (0,)).iloc[0].seeds_with_path_before, 0)
+        lone.add_edge(7, 7)
+        self.assertEqual(robustness(lone, lone_frame, (0,)).iloc[0].seeds_with_path_before, 1)
+
+    def test_optional_exports_and_completeness(self):
+        self.assertTrue(self.frame.evidence.str.len().le(200).all())
+        self.assertTrue(self.outputs["clusters.csv"].hypothesis.str.contains("узлов: ").all())
+        self.assertIn("444", completeness(self.frame, self.tx))
+        self.assertIn("5 000 KZT", completeness(self.frame, self.tx))
+        result = robustness(self.graph, self.frame)
+        self.assertEqual(result.top_removed.tolist(), [5, 10, 20])
+        self.assertTrue(result.seeds_lost_path.is_monotonic_increasing)
 
     def test_three_roles_explained_by_thresholds(self):
         for role in ("coordinator", "transit", "terminal"):
