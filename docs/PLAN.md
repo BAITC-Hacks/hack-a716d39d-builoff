@@ -102,13 +102,13 @@ Fallback: если PageRank/SciPy даёт технический сбой, уб
 
 ### T2.0 — редактура объяснений перед I2
 
-Priority: CORE | Status: DONE | Dependencies: I1  
+Priority: CORE | Status: DONE | Dependencies: I1
 Scope: русские числовые `evidence`, сравнительные `why`, содержательные гипотезы кластеров и округление экспортируемых скоров до 3 знаков без изменения правил и ранжирования (онтология BR-04/06/07/10/12/13).  
 Verification: 3 unit-теста; сравнение старых и новых CSV показало одинаковые `gid`/роли/кластеры, тот же порядок топа и совпадение скоров после округления; максимум `evidence` — 191 символ.
 
 ### I2 — просмотр сети, до 16:00
 
-Priority: CORE | Status: NOT_STARTED | Dependencies: I1  
+Priority: CORE | Status: DONE | Dependencies: I1
 Цель: закончить основной сценарий аналитика и AC-05.  
 Scope: `graph.json` из того же расчёта, один HTML с Cytoscape.js, локально доступная библиотека, поиск `gid`, подсветка роли/кластера и соседей, стрелки и карточка с метриками/объяснением.  
 Out of scope: серверный API, чат, LLM, временные паттерны.  
@@ -118,9 +118,9 @@ Verification: `python pipeline.py --data data --out out`; `python -m http.server
 Fallback: если полная раскладка 2 248 узлов медленна, показать компоненты/кластеры с фокусом на найденном узле и его соседях, сохранив поиск, направление и роль; все узлы остаются доступны.
 
 Задачи:
-- T2.1 — сериализация `graph.json` с проверкой ссылок и направлений | AC-05 | Verification: 2 248 узлов, 3 119 рёбер, все `source/target` существуют | Status: NOT_STARTED
-- T2.2 — один HTML/Cytoscape.js, легенда, стрелки, поиск и фокус | AC-05 | Verification: живой просмотр и поиск 3 `gid` | Status: NOT_STARTED
-- T2.3 — инструкция запуска viewer, визуальная проверка, регрессия и коммит | AC-01–05 | Verification: чистый браузер, screenshots, повтор команд I1 | Status: NOT_STARTED
+- T2.1 — сериализация `graph.json` с проверкой ссылок и направлений | AC-05 | Verification: 2 248 узлов, 3 119 рёбер, все `source/target` существуют | Status: DONE
+- T2.2 — один HTML/Cytoscape.js, легенда, стрелки, поиск и фокус | AC-05 | Verification: живой просмотр и поиск 3 `gid` | Status: DONE
+- T2.3 — инструкция запуска viewer, визуальная проверка, регрессия и коммит | AC-01–05 | Verification: чистый браузер, screenshots, повтор команд I1 | Status: DONE
 
 ### I3 — временные признаки и необязательные тексты, до 16:30
 

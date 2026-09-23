@@ -29,6 +29,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(self.outputs["top_nodes.csv"]), 20)
         self.assertEqual(sum(self.outputs["clusters.csv"].n_nodes), 2248)
 
+    def test_viewer_graph_preserves_directed_edges(self):
+        data = pipeline.graph_export(self.graph, self.frame)
+        pipeline.validate_graph(data, self.frame, self.graph)
+        self.assertEqual((len(data["nodes"]), len(data["edges"])), (2248, 3119))
+        for edge in data["edges"]:
+            self.assertTrue(self.graph.has_edge(int(edge["source"]), int(edge["target"])))
+
     def test_three_roles_explained_by_thresholds(self):
         for role in ("coordinator", "transit", "terminal"):
             row = self.frame.loc[self.frame.role == role].iloc[0]

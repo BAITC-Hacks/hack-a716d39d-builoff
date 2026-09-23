@@ -2,6 +2,7 @@
 """Deterministic analysis of the supplied directed transfer network (Python 3.9)."""
 
 import argparse
+import json
 import math
 import os
 import sys
@@ -68,8 +69,9 @@ def describe_node(row, role):
         text += " {:.0f}% полученного".format(100 * row.pass_through)
     else:
         text += " ({})".format(amount_text(row.out_kzt))
-    text += "; достижим от {} seed; связь с {} кластерами. {}.".format(
-        row.n_reaching_seed, row.n_other_clusters, ROLE_PHRASES[role]
+    text += "; достижим от {} seed; связь с {} {}. {}.".format(
+        row.n_reaching_seed, row.n_other_clusters,
+        count_form(row.n_other_clusters, "кластером", "кластерами", "кластерами"), ROLE_PHRASES[role]
     )
     if row.truncated_by_depth:
         text += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
@@ -252,8 +254,9 @@ def exports(graph, frame, cluster_of):
         comparison = (
             "При равном приоритете выше следующего по gid."
             if gap < 1e-12 else
-            "Выше следующего на {:.4f} по приоритету; вклад: вход {} плательщиков, {:.2f} KZT, {} seed, роль {}.".format(
-                gap, row.in_deg, row.in_kzt, row.n_reaching_seed, row.role
+            "Выше следующего на {:.4f} по приоритету; вклад: входящих контрагентов {}, сумма входа {}, "
+            "достижимых seed {}, вес роли {:.1f}.".format(
+                gap, row.in_deg, amount_text(row.in_kzt), row.n_reaching_seed, ROLE_WEIGHT[row.role]
             )
         )
         reasons.append(row.evidence + " " + comparison)
@@ -298,14 +301,51 @@ def validate_outputs(outputs, frame):
         raise DataError("output: top order invalid")
 
 
+def graph_export(graph, frame):
+    nodes = []
+    for row in frame.itertuples(index=False):
+        nodes.append({
+            "id": str(row.gid), "gid": int(row.gid), "role": row.role,
+            "cluster_id": int(row.cluster_id), "role_score": round(row.role_score, 3),
+            "priority_score": round(row.priority_score, 3), "evidence": row.evidence,
+            "depth": int(row.depth), "is_seed": bool(row.is_seed),
+            "in_deg": int(row.in_deg), "out_deg": int(row.out_deg),
+            "in_kzt": round(float(row.in_kzt), 2), "out_kzt": round(float(row.out_kzt), 2),
+            "n_reaching_seed": int(row.n_reaching_seed),
+            "truncated_by_depth": bool(row.truncated_by_depth),
+        })
+    edges = [
+        {"id": "{}-{}".format(src, dst), "source": str(src), "target": str(dst),
+         "sum_kzt": round(float(data["sum_kzt"]), 2), "n_tx": int(data["n_tx"])}
+        for src, dst, data in sorted(graph.edges(data=True))
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def validate_graph(data, frame, graph):
+    ids = {node["id"] for node in data["nodes"]}
+    if len(data["nodes"]) != len(frame) or ids != {str(gid) for gid in frame.gid}:
+        raise DataError("output: graph node coverage invalid")
+    if len(data["edges"]) != graph.number_of_edges() or any(
+        edge["source"] not in ids or edge["target"] not in ids or
+        not graph.has_edge(int(edge["source"]), int(edge["target"]))
+        for edge in data["edges"]
+    ):
+        raise DataError("output: graph edges invalid")
+    json.dumps(data, ensure_ascii=False, allow_nan=False)
+
+
 def write_outputs(outputs, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
     pending = []
     try:
         for filename, table in outputs.items():
-            fd, temporary = tempfile.mkstemp(prefix=".pipeline-", suffix=".csv", dir=out_dir)
+            fd, temporary = tempfile.mkstemp(prefix=".pipeline-", suffix=Path(filename).suffix, dir=out_dir)
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
-                table.to_csv(stream, index=False)
+                if filename.endswith(".json"):
+                    json.dump(table, stream, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+                else:
+                    table.to_csv(stream, index=False)
             pending.append((temporary, out_dir / filename))
         for temporary, destination in pending:
             os.replace(temporary, destination)
@@ -329,6 +369,8 @@ def main(argv=None):
         rank_nodes(frame)
         result = exports(graph, frame, cluster_of)
         validate_outputs(result, frame)
+        result["graph.json"] = graph_export(graph, frame)
+        validate_graph(result["graph.json"], frame, graph)
         write_outputs(result, args.out)
     except (DataError, OSError, nx.NetworkXException) as exc:
         print("ERROR: {}".format(exc), file=sys.stderr)
