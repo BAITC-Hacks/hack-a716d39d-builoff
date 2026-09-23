@@ -67,9 +67,9 @@ AML-аналитику известен 81 исходный клиент, а и�
 
 ## Технологии
 
-Python 3.9; pandas 2.0.3, pyarrow 17.0.0, NetworkX 3.2.1,
-NumPy 1.26.4, SciPy 1.13.1, openai 2.48.0, python-dotenv 1.2.1
-([фиксированные версии](requirements.txt)). Viewer — HTML/JS и локальная
+Python 3.9+ (проверено на 3.9.6); pandas, pyarrow, NetworkX,
+NumPy, SciPy, openai, python-dotenv
+([границы версий](requirements.txt)). Viewer — HTML/JS и локальная
 копия Cytoscape.js 3.34.3. Необязательные тексты используют OpenAI
 Responses API и `OPENAI_MODEL=gpt-6-sol` в проверенном live-прогоне.
 Роли, скоры и топ модель не вычисляет.
@@ -101,21 +101,23 @@ HTTP-сервер. Неверный вход завершает CLI с сооб�
 
 ## Установка и запуск
 
-Нужны Python 3.9, `git` и доступ к PyPI при установке. Все три Parquet
-находятся в `data/` репозитория. Команды на macOS/Linux:
+Нужны Python 3.9+, `git` и доступ к PyPI при установке. Проверено на
+Python 3.9.6. Все три Parquet находятся в `data/` репозитория.
+Команды на macOS/Linux:
 
 ```sh
 git clone https://github.com/BAITC-Hacks/hack-a716d39d-builoff.git
 cd hack-a716d39d-builoff
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env
 .venv/bin/python pipeline.py --data data --out out
 ```
 
-Оставьте `OPENAI_API_KEY=your_key_here` для обязательного расчёта без
-внешнего вызова. Для необязательных гипотез внесите в `.env` ключ,
-предоставленный для проверки, и задайте `OPENAI_MODEL`. Флаг `--no-llm`
+На Windows используйте `.venv\Scripts\python` вместо `.venv/bin/python`.
+Файл `.env` для обязательного расчёта не нужен: без него программа сообщает
+`LLM skipped` и сохраняет результаты. Для необязательных гипотез скопируйте
+`.env.example` в `.env`, внесите ключ, предоставленный для проверки,
+и задайте `OPENAI_MODEL`. Флаг `--no-llm`
 пропускает оба LLM-вызова при любом содержимом `.env`.
 
 | Имя | Назначение | Обязательно |
@@ -181,8 +183,8 @@ seed неполон; 444 узла обрываются на четвёртом �
 полных данных. Нет AML-вердикта, авторизации и онлайн-обновления.
 
 Предоставленные данные и [starter/](starter/) использованы как исходный
-материал. Процессные `AGENTS.md`, `docs/PROCESS.md`, `docs/BASELINE.md`
-и `docs/ONTOLOGY_GUIDE.md` подготовлены до соревновательной части;
+материал. Процессные `AGENTS.md`, `docs/PROCESS.md` и
+`docs/ONTOLOGY_GUIDE.md` подготовлены до соревновательной части;
 код решения, онтология, план и доменные тексты созданы во время неё.
 Библиотеки и модель перечислены в «Технологиях», иных датасетов нет.
 GitHub Actions отключён по ограничению репозитория организатора;
