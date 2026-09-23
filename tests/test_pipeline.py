@@ -6,7 +6,7 @@ import pandas as pd
 
 import pipeline
 from temporal import compute_temporal
-from structural import add_pattern_evidence, completeness, pattern_counts, robustness
+from structural import add_pattern_counts, completeness, pattern_counts, robustness
 import networkx as nx
 
 
@@ -22,7 +22,8 @@ class PipelineTests(unittest.TestCase):
         cls.frame = cls.frame.merge(compute_temporal(cls.nodes, cls.tx), on="gid", validate="one_to_one")
         pipeline.assign_roles(cls.frame)
         pipeline.rank_nodes(cls.frame)
-        add_pattern_evidence(cls.frame, cls.graph, cls.tx)
+        add_pattern_counts(cls.frame, cls.graph, cls.tx)
+        pipeline.assign_explanations(cls.frame)
         cls.frame["node_summary"] = ""
         cls.frame["node_summary_source"] = "deterministic"
         cls.outputs = pipeline.exports(cls.graph, cls.frame, cls.cluster_of)
@@ -88,15 +89,10 @@ class PipelineTests(unittest.TestCase):
         long_cycle.add_edge(16, 10)
         nx.set_edge_attributes(long_cycle, 1, "n_tx")
         self.assertEqual(pattern_counts(long_cycle, tx)[0], {})
-        frame = pd.DataFrame({"gid": [1, 2, 3, 4], "evidence": ["Признак."] * 4,
-                              "in_deg": [1] * 4, "out_deg": [1] * 4,
-                              "n_reaching_seed": [1] * 4, "n_other_clusters": [0] * 4,
-                              "role": ["transit"] * 4,
-                              "truncated_by_depth": [False] * 4, "is_seed": [False] * 4})
-        add_pattern_evidence(frame, graph, tx)
-        self.assertIn("Цикл≤6: 1", frame.loc[0, "evidence"])
-        self.assertIn("Дробление, tx: 3", frame.loc[1, "evidence"])
-        self.assertNotIn("Цикл≤6", frame.loc[3, "evidence"])
+        frame = pd.DataFrame({"gid": [1, 2, 3, 4]})
+        add_pattern_counts(frame, graph, tx)
+        self.assertEqual(frame.cycle_count.tolist(), [1, 1, 1, 0])
+        self.assertEqual(frame.split_tx_count.tolist(), [0, 3, 0, 0])
 
     def test_robustness_path_loss_uses_original_targets(self):
         graph = nx.DiGraph([(1, 2), (2, 3), (4, 3)])
@@ -117,6 +113,12 @@ class PipelineTests(unittest.TestCase):
 
     def test_optional_exports_and_completeness(self):
         self.assertTrue(self.frame.evidence.str.len().le(200).all())
+        top = self.outputs["top_nodes.csv"]
+        self.assertFalse(top["why"].str.contains(r"Вх:|вых:|1–2д:|Цикл≤6:|Цепь×2", regex=True).any())
+        self.assertFalse(self.frame.evidence.str.contains(r"Вх:|вых:|1–2д:|Цикл≤6:|Цепь×2", regex=True).any())
+        self.assertIn("исходящих перевода в течение 1–2 дней после получения", top.iloc[0]["why"])
+        self.assertIn("повторяющихся маршрутах", top.iloc[0]["why"])
+        self.assertIn("вклад дают", top.iloc[0]["why"])
         self.assertTrue(self.outputs["clusters.csv"].hypothesis.str.contains("узлов: ").all())
         self.assertIn("444", completeness(self.frame, self.tx))
         self.assertIn("5 000 KZT", completeness(self.frame, self.tx))
@@ -125,12 +127,11 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(result.seeds_lost_path.is_monotonic_increasing)
 
     def test_three_roles_explained_by_thresholds(self):
-        for role in ("coordinator", "transit", "terminal"):
+        phrases = {"coordinator": "На координацию указывают", "transit": "На транзит указывает",
+                   "terminal": "На наблюдаемое завершение указывают"}
+        for role in phrases:
             row = self.frame.loc[self.frame.role == role].iloc[0]
-            self.assertTrue("Получает от {}".format(row.in_deg) in row.evidence or
-                            "Вх:{}".format(row.in_deg) in row.evidence)
-            self.assertTrue("отправляет {}".format(row.out_deg) in row.evidence or
-                            "вых:{}".format(row.out_deg) in row.evidence)
+            self.assertIn(phrases[role], row.evidence)
             if role == "coordinator":
                 self.assertGreaterEqual(row.in_deg, 5)
                 self.assertGreaterEqual(row.out_deg, 10)

@@ -32,34 +32,13 @@ def pattern_counts(graph, tx):
     return cycles, repeated_chains, split_transfers
 
 
-def add_pattern_evidence(frame, graph, tx):
+def add_pattern_counts(frame, graph, tx):
     cycles, chains, splits = pattern_counts(graph, tx)
-    counts = (("cycle_count", cycles, "Цикл≤6"),
-              ("repeat_chain_count", chains, "Цепь×2"),
-              ("split_tx_count", splits, "Дробление, tx"))
-    for column, values, _ in counts:
+    counts = (("cycle_count", cycles),
+              ("repeat_chain_count", chains),
+              ("split_tx_count", splits))
+    for column, values in counts:
         frame[column] = frame.gid.map(lambda gid: values[int(gid)]).astype(int)
-    evidence = []
-    for row in frame.itertuples(index=False):
-        signals = ["{}: {}".format(label, values[int(row.gid)])
-                   for _column, values, label in counts if values[int(row.gid)] > 0]
-        if not signals:
-            evidence.append(row.evidence)
-            continue
-        suffix = " " + "; ".join(signals) + "."
-        if len(row.evidence) + len(suffix) <= 200:
-            evidence.append(row.evidence + suffix)
-            continue
-        # Keep the role, observed degrees, and the mandatory coverage caveat.
-        core = "Вх:{} пл., вых:{} получ., seed:{}, кл:{}; {}.".format(
-            row.in_deg, row.out_deg, row.n_reaching_seed, row.n_other_clusters, row.role)
-        caveat = " Обрыв 4-го колена." if row.truncated_by_depth else ""
-        caveat += " Вход seed неполон." if row.is_seed else ""
-        value = core + caveat + suffix
-        if len(value) > 200:
-            raise ValueError("pattern evidence exceeds 200 characters")
-        evidence.append(value)
-    frame["evidence"] = evidence
     return cycles, chains, splits
 
 

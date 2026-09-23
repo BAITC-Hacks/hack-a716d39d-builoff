@@ -17,18 +17,10 @@ import pandas as pd
 from cluster_llm import generate_hypotheses
 from node_llm import generate_node_cards
 from temporal import compute_temporal
-from structural import add_pattern_evidence, completeness, robustness
+from structural import add_pattern_counts, completeness, robustness
 
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
 ROLE_WEIGHT = dict(zip(ROLES, (1.0, 0.9, 0.8, 0.6, 0.3, 0.1)))
-ROLE_PHRASES = {
-    "coordinator": "Признаки координации",
-    "consolidator": "Признаки консолидации",
-    "distributor": "Признаки распределения",
-    "transit": "Признаки транзита",
-    "terminal": "Признаки наблюдаемого завершения",
-    "peripheral": "Без явной роли",
-}
 SCHEMAS = {
     "nodes.parquet": ("gid", "depth", "is_seed"),
     "edges.parquet": ("src", "dst", "sum_kzt", "n_tx", "depth"),
@@ -45,11 +37,8 @@ def clip(value):
 
 
 def amount_text(value):
-    if value >= 1_000_000:
-        return "{} млн KZT".format("{:.2f}".format(value / 1_000_000).replace(".", ","))
-    if value >= 1_000:
-        return "{} тыс. KZT".format("{:.1f}".format(value / 1_000).replace(".", ","))
-    return "{:.0f} KZT".format(value)
+    number = "{:,.2f}".format(value).replace(",", " ").replace(".", ",")
+    return number.rstrip("0").rstrip(",") + " KZT"
 
 
 def count_form(number, one, few, many):
@@ -62,42 +51,91 @@ def count_form(number, one, few, many):
     return many
 
 
-def describe_node(row, role):
-    text = "Получает от {} {} ({}), отправляет {} {}".format(
-        row.in_deg, count_form(row.in_deg, "плательщика", "плательщиков", "плательщиков"),
-        amount_text(row.in_kzt), row.out_deg,
-        count_form(row.out_deg, "получателю", "получателям", "получателям")
-    )
-    if row.truncated_by_depth:
-        pass
-    elif row.in_kzt > 0 and not row.is_seed:
-        text += " {:.0f}% полученного".format(100 * row.pass_through)
+def role_explanation(row):
+    if row.role == "coordinator":
+        core = "На координацию указывают {} {}, {} {} и путь от {} исходных клиентов.".format(
+            row.in_deg, count_form(row.in_deg, "плательщик", "плательщика", "плательщиков"),
+            row.out_deg, count_form(row.out_deg, "получатель", "получателя", "получателей"), row.n_reaching_seed)
+        detail = "Связан с {} другими кластерами.".format(row.n_other_clusters) if row.n_other_clusters >= 2 else \
+            "Betweenness входит в топ-5% компоненты."
+    elif row.role == "consolidator":
+        core = "На консолидацию указывают {} разных {}.".format(
+            row.in_deg, count_form(row.in_deg, "плательщик", "плательщика", "плательщиков"))
+        detail = "Наблюдаемый вход — {}.".format(amount_text(row.in_kzt))
+    elif row.role == "distributor":
+        core = "На распределение указывают {} разных {}.".format(
+            row.out_deg, count_form(row.out_deg, "получатель", "получателя", "получателей"))
+        detail = "Наблюдаемый выход — {}.".format(amount_text(row.out_kzt))
+    elif row.role == "transit":
+        core = "На транзит указывает передача {:.0f}% полученного.".format(100 * row.pass_through)
+        detail = "Вход — {}, выход — {}.".format(amount_text(row.in_kzt), amount_text(row.out_kzt))
+    elif row.role == "terminal":
+        core = "На наблюдаемое завершение указывают {} {} и отсутствие исходящих переводов до четвёртого колена.".format(
+            row.in_deg, count_form(row.in_deg, "плательщик", "плательщика", "плательщиков"))
+        detail = "Наблюдаемый вход — {}.".format(amount_text(row.in_kzt))
     else:
-        text += " ({})".format(amount_text(row.out_kzt))
-    text += "; достижим от {} seed; связь с {} {}. {}.".format(
-        row.n_reaching_seed, row.n_other_clusters,
-        count_form(row.n_other_clusters, "кластером", "кластерами", "кластерами"), ROLE_PHRASES[role]
-    )
+        core = "Основные пороги ролей не достигнуты: {} {} и {} {}.".format(
+            row.in_deg, count_form(row.in_deg, "плательщик", "плательщика", "плательщиков"),
+            row.out_deg, count_form(row.out_deg, "получатель", "получателя", "получателей"))
+        detail = "Наблюдаемый вход — {}, выход — {}.".format(amount_text(row.in_kzt), amount_text(row.out_kzt))
+    return core, detail
+
+
+def pattern_explanation(row):
+    parts = []
+    if row.cycle_count:
+        parts.append("{} {}".format(row.cycle_count, count_form(
+            row.cycle_count, "возвратной цепочке", "возвратных цепочках", "возвратных цепочках")))
+    if row.repeat_chain_count:
+        parts.append("{} {}".format(row.repeat_chain_count, count_form(
+            row.repeat_chain_count, "повторяющемся маршруте", "повторяющихся маршрутах", "повторяющихся маршрутах")))
+    text = "Участвует в {}.".format(" и ".join(parts)) if parts else ""
+    if row.split_tx_count:
+        text += " Признак дробления: {} {}.".format(row.split_tx_count, count_form(
+            row.split_tx_count, "перевод", "перевода", "переводов"))
+    return text.strip()
+
+
+def temporal_explanations(row):
+    parts = []
+    if row.fast_out_count:
+        first, last = int(row.fast_in_date[-2:]), int(row.fast_out_date[-2:])
+        parts.append("{} {} в течение 1–2 дней после получения, {}–{} июля.".format(
+            row.fast_out_count, count_form(row.fast_out_count, "исходящий перевод", "исходящих перевода", "исходящих переводов"),
+            first, last))
+    if row.sync_days:
+        parts.append("{} июля поступили переводы от {} {}.".format(
+            int(row.sync_date[-2:]), row.sync_max_payers,
+            count_form(row.sync_max_payers, "плательщика", "плательщиков", "плательщиков")))
+    if row.burst_days:
+        parts.append("{} июля — {} {} при среднем {} в день.".format(
+            int(row.burst_date[-2:]), row.burst_max_count,
+            count_form(row.burst_max_count, "операция", "операции", "операций"),
+            "{:.1f}".format(row.burst_daily_mean).replace(".", ",")))
+    return parts
+
+
+def describe_node(row, limit=None):
+    core, detail = role_explanation(row)
+    caveats = []
     if row.truncated_by_depth:
-        text += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
+        caveats.append("Конечность на четвёртом колене не доказана.")
     if row.is_seed:
-        text += " У seed вход неполон."
-    if row.temporal_brief:
-        expanded = text + " " + row.temporal_brief + "."
-        if len(expanded) <= 200:
-            return expanded
-        compact = "Вх:{} пл., вых:{} получ., seed:{}, кл:{}. {}.".format(
-            row.in_deg, row.out_deg, row.n_reaching_seed, row.n_other_clusters, ROLE_PHRASES[role]
-        )
-        if role == "transit":
-            compact += " Пропуск {:.0f}%.".format(100 * row.pass_through)
-        compact += " " + row.temporal_brief + "."
-        if row.truncated_by_depth:
-            compact += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
-        if row.is_seed:
-            compact += " У seed вход неполон."
-        return compact
-    return text
+        caveats.append("Вход неполон.")
+    pattern = pattern_explanation(row)
+    required = [core] + caveats + ([pattern] if pattern else [])
+    if limit is not None and len(" ".join(required)) > limit:
+        raise DataError("output: role and pattern evidence exceeds 200 characters")
+    parts = [core]
+    if detail and (limit is None or len(" ".join(required + [detail])) <= limit):
+        parts.append(detail)
+    parts.extend(caveats)
+    if pattern:
+        parts.append(pattern)
+    for signal in temporal_explanations(row):
+        if limit is None or len(" ".join(parts + [signal])) <= limit:
+            parts.append(signal)
+    return " ".join(parts)
 
 
 def load_validate(data_dir):
@@ -212,7 +250,7 @@ def cluster_graph(graph, frame):
 
 
 def assign_roles(frame):
-    roles, scores, evidence = [], [], []
+    roles, scores = [], []
     for row in frame.itertuples(index=False):
         candidate = (
             row.in_deg >= 5 and row.out_deg >= 10 and row.n_reaching_seed >= 2
@@ -232,13 +270,14 @@ def assign_roles(frame):
         else:
             role, strength = "peripheral", 0.2
         score = clip(strength - 0.2 * row.truncated_by_depth - 0.2 * (row.is_seed and role in ("coordinator", "consolidator", "terminal")))
-        explanation = describe_node(row, role)
         roles.append(role)
         scores.append(score)
-        evidence.append(explanation)
     frame["role"] = roles
     frame["role_score"] = scores
-    frame["evidence"] = evidence
+
+
+def assign_explanations(frame):
+    frame["evidence"] = [describe_node(row, limit=200) for row in frame.itertuples(index=False)]
 
 
 def rank_nodes(frame):
@@ -276,14 +315,17 @@ def exports(graph, frame, cluster_of):
         following = ordered.iloc[index + 1]
         gap = row.priority_score - following.priority_score
         comparison = (
-            "При равном приоритете выше следующего по gid."
+            "Приоритет равен следующему; меньший gid определил порядок."
             if gap < 1e-12 else
-            "Выше следующего на {:.4f} по приоритету; вклад: входящих контрагентов {}, сумма входа {}, "
-            "достижимых seed {}, вес роли {:.1f}.".format(
-                gap, row.in_deg, amount_text(row.in_kzt), row.n_reaching_seed, ROLE_WEIGHT[row.role]
+            "Приоритет выше следующего на {}; вклад дают {} {}, вход на {}, "
+            "путь от {} исходных клиентов и вес роли {}.".format(
+                "{:.4f}".format(gap).replace(".", ","), row.in_deg,
+                count_form(row.in_deg, "входящий контрагент", "входящих контрагента", "входящих контрагентов"),
+                amount_text(row.in_kzt), row.n_reaching_seed,
+                "{:.1f}".format(ROLE_WEIGHT[row.role]).replace(".", ",")
             )
         )
-        reasons.append(row.evidence + " " + comparison)
+        reasons.append(describe_node(row) + " " + comparison)
     top["why"] = reasons
     internal = {idx: 0.0 for idx in set(cluster_of.values())}
     for src, dst, data in graph.edges(data=True):
@@ -406,7 +448,8 @@ def main(argv=None):
         frame = frame.merge(compute_temporal(nodes, tx), on="gid", validate="one_to_one")
         assign_roles(frame)
         rank_nodes(frame)
-        add_pattern_evidence(frame, graph, tx)
+        add_pattern_counts(frame, graph, tx)
+        assign_explanations(frame)
         robustness_table = robustness(graph, frame)
         if args.no_llm:
             frame["node_summary"] = ""

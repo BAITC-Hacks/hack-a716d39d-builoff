@@ -198,3 +198,73 @@ gid 100000008546855100: Цикл≤6: 2; Дробление, tx: 3.
 направленных рёбер и корректность ссылок. Интерактивная проверка в браузере
 этой итерации **NOT_VERIFIED**: подключённый браузер недоступен; ранее она
 прошла в Iteration 2 и 3, код viewer в Iteration 4 не менялся.
+
+## Этап 5 · feature freeze
+
+После явного разрешения пользователя выполнен live-запуск
+`.venv/bin/python pipeline.py --data data --out out` с моделью `gpt-6-sol`.
+Фактический stdout итогового запуска после исправления формулировок:
+
+```text
+nodes=2248 edges=3119 transactions=4840 seeds=81
+clusters=91 isolated=19 truncated=444 terminal_truncated=0
+wrote: out/nodes_roles.csv, out/clusters.csv, out/top_nodes.csv, out/graph.json, out/robustness.csv, out/completeness.md
+robustness: top_removed components seeds_with_path_before seeds_with_path_after seeds_lost_path share_all_seeds_lost_pct
+robustness: 5 108 23 21 2 2.47
+robustness: 10 177 23 20 3 3.70
+robustness: 20 240 23 11 12 14.81
+LLM hypotheses verified: 8/8 multi-seed clusters
+Node cards LLM verified: 5/5 priority nodes
+elapsed_seconds=20.090
+```
+
+В CSV действительно `hypothesis_source=llm_verified` у 8 кластеров из 91,
+`node_summary_source=llm_verified` у 5 узлов из 2 248. Пример дословно
+из `nodes_roles.csv` для `gid 100000003684369100`:
+
+> Признаки возможного распределения потоков в наблюдаемой части графа.
+
+Другие 83 гипотезы и 2 243 карточки остались детерминированными.
+Секретный ключ в EVIDENCE, CSV и логи не копировался.
+
+Исправление формулировок проверено сравнением прежнего результата и
+нового по всем `gid`: `gid`, `role`, `role_score`, `cluster_id`,
+`priority_score` совпали; `rank/gid/role/priority_score` всех 20 строк
+топа тоже совпали. `evidence` не длиннее 200 символов. Дословные
+объяснения, экспортированные в `graph.json` для карточек viewer:
+
+```text
+gid 100000003684369100 · coordinator · кластер 3 · приоритет 0.779
+На координацию указывают 24 плательщика, 62 получателя и путь от 9 исходных клиентов. Связан с 9 другими кластерами. Вход неполон. Участвует в 1 возвратной цепочке и 63 повторяющихся маршрутах.
+
+gid 100000000850297100 · transit · кластер 11 · приоритет 0.263
+На транзит указывает передача 100% полученного. Вход — 17 520 KZT, выход — 17 520 KZT. Участвует в 1 возвратной цепочке.
+
+gid 100000004265639100 · peripheral · кластер 1 · приоритет 0.1
+Основные пороги ролей не достигнуты: 1 плательщик и 0 получателей. Наблюдаемый вход — 10 000 KZT, выход — 0 KZT. Конечность на четвёртом колене не доказана.
+```
+
+Viewer показывает поле `evidence` из этого JSON дословно
+([viewer/index.html](../viewer/index.html)). В I2 браузер открыл эти
+три `gid` и показал роли и связи; после feature freeze новое визуальное
+подтверждение ожидается от ручных скриншотов. Нужны снимки трёх `gid`
+выше и поиска `gid 999` с сообщением «Узел 999 не найден в предоставленной
+сети». До получения снимков повторная интерактивная проверка
+**NOT_VERIFIED**.
+
+Фактические ошибки на отдельных проверках (`--no-llm`):
+
+```text
+empty folder: exit=1
+ERROR: V-01: missing /var/folders/ct/n_qzvymd3svdw94z04cc17rh0000gn/T/tmp7znpwfze/empty/nodes.parquet
+
+broken edges.parquet: exit=1
+ERROR: V-01: cannot read /var/folders/ct/n_qzvymd3svdw94z04cc17rh0000gn/T/tmp7znpwfze/broken/edges.parquet: Could not open Parquet input source '<Buffer>': Parquet magic bytes not found in footer. Either the file is corrupted or this is not a parquet file.
+```
+
+Несогласованный `n_tx` из `test_bad_aggregate_rejected_without_outputs`
+вернул `V-03`; папка результата не появилась. Без ключа проверяется ниже
+на чистом клоне. Неизвестный `gid` ранее дал в браузере дословно:
+«Узел 999999999999999999 не найден в предоставленной сети.» (I2).
+Для `gid 999` тот же путь кода ожидает текст с числом 999; свежий
+скриншот пока отсутствует.
