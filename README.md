@@ -21,6 +21,7 @@ AML-аналитику известен 81 исходный клиент, а и�
 | Временные признаки | [EVIDENCE: I3](docs/EVIDENCE.md), сверка с Parquet и тест | [temporal.py](temporal.py) |
 | Циклы, цепочки, дробление и устойчивость | [EVIDENCE: I4](docs/EVIDENCE.md), живой запуск и тест | [structural.py](structural.py) |
 | Проверяемые LLM-тексты для 8 кластеров и 5 узлов | [EVIDENCE: этап 5](docs/EVIDENCE.md), живой запуск и mock тест | [cluster_llm.py](cluster_llm.py), [node_llm.py](node_llm.py) |
+| Отдельный read-only CLI-ассистент по готовому графу: шесть function tools, сверка каждого `gid` и числа | [EVIDENCE: I5](docs/EVIDENCE.md), три live-вопроса и тест без модели | [ask.py](ask.py), [test_ask.py](tests/test_ask.py) |
 
 Обязательные файлы: `out/nodes_roles.csv`, `out/clusters.csv`,
 `out/top_nodes.csv`. Дополнительные: `out/graph.json`,
@@ -146,9 +147,26 @@ python3 -m http.server 8000 --bind 127.0.0.1
 необязательных текстов эксперт получает по договорённости с организаторами.
 Без ключа программа сообщает `LLM skipped` и сохраняет обязательные файлы.
 
+После расчёта можно задать отдельный вопрос ассистенту:
+
+```sh
+.venv/bin/python ask.py 'что известно о 100000005382566100?'
+```
+
+CLI читает готовые `out/nodes_roles.csv`, `out/clusters.csv` и
+`out/graph.json`, использует `OPENAI_API_KEY` и `OPENAI_MODEL` из `.env`.
+Его tools: `find_node`, `neighbors`, `top_by_role`, `paths_from_seeds`,
+`cluster_members`, `search_by_metric`. После ответа код сверяет все `gid`
+и числа с фактически возвращёнными результатами tools; при расхождении
+добавляет `[не подтверждено]`. Без ключа сообщает об этом и выходит с
+кодом 0. Ответы являются гипотезами по наблюдаемому графу.
+
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python pipeline.py --data data --out out --no-llm
+.venv/bin/python ask.py 'кто собирает деньги с seed-клиентов?'
+.venv/bin/python ask.py 'что известно о 100000005382566100?'
+.venv/bin/python ask.py 'какие узлы связывают кластеры 3 и 16?'
 ```
 
 Фактический вывод, edge cases и AC — в [EVIDENCE](docs/EVIDENCE.md).
