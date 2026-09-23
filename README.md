@@ -17,12 +17,12 @@ AML-аналитику известен 81 исходный клиент, а и�
 |---|---|---|
 | Проверка трёх Parquet и согласованности переводов | [EVIDENCE: I1 и этап 5](docs/EVIDENCE.md), живой запуск и тест | [pipeline.py](pipeline.py) |
 | Метрики, роли, объяснения, кластеры Louvain и топ | [EVIDENCE: I1–I4](docs/EVIDENCE.md), живой запуск и тест | [pipeline.py](pipeline.py) |
-| Viewer с направлением связей и поиском `gid` | [EVIDENCE: I2–I3](docs/EVIDENCE.md), скриншоты [сети](docs/screenshots/viewer.png) и [транзита](docs/screenshots/viewer-transit.png) | [viewer/index.html](viewer/index.html) |
+| Viewer с направлением связей и поиском `gid` | [EVIDENCE: I2–I3](docs/EVIDENCE.md), [скриншот вкладки «Сеть»](docs/screenshots/network-tab.png) | [viewer/index.html](viewer/index.html) |
 | Временные признаки | [EVIDENCE: I3](docs/EVIDENCE.md), сверка с Parquet и тест | [temporal.py](temporal.py) |
 | Циклы, цепочки, дробление и устойчивость | [EVIDENCE: I4](docs/EVIDENCE.md), живой запуск и тест | [structural.py](structural.py) |
 | Проверяемые LLM-тексты для 8 кластеров и 5 узлов | [EVIDENCE: этап 5](docs/EVIDENCE.md), живой запуск и mock тест | [cluster_llm.py](cluster_llm.py), [node_llm.py](node_llm.py) |
 | Отдельный read-only CLI-ассистент по готовому графу: шесть function tools, сверка каждого `gid` и числа | [EVIDENCE: I5](docs/EVIDENCE.md), три live-вопроса и тест без модели | [ask.py](ask.py), [test_ask.py](tests/test_ask.py) |
-| Вкладка «Ассистент»: input check (guard и ontology), история ответов и переход по `gid` во вкладку «Сеть» | [EVIDENCE: I6–I7](docs/EVIDENCE.md), пять live-вопросов, policy-тесты; [скриншот сети](docs/screenshots/viewer.png). Снимки ассистента приложены в диалоге, но отсутствуют в репозитории | [serve.py](serve.py), [input_check.py](input_check.py), [viewer/index.html](viewer/index.html) |
+| Вкладка «Ассистент»: input check (guard и ontology), история ответов и переход по `gid` во вкладку «Сеть» | [EVIDENCE: I6–I7](docs/EVIDENCE.md), пять live-вопросов, policy-тесты и [скриншот вкладки «Ассистент»](docs/screenshots/assistant-tab.png) | [serve.py](serve.py), [input_check.py](input_check.py), [viewer/index.html](viewer/index.html) |
 
 Обязательные файлы: `out/nodes_roles.csv`, `out/clusters.csv`,
 `out/top_nodes.csv`. Дополнительные: `out/graph.json`,
