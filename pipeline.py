@@ -15,6 +15,14 @@ import pandas as pd
 
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
 ROLE_WEIGHT = dict(zip(ROLES, (1.0, 0.9, 0.8, 0.6, 0.3, 0.1)))
+ROLE_PHRASES = {
+    "coordinator": "Признаки координации",
+    "consolidator": "Признаки консолидации",
+    "distributor": "Признаки распределения",
+    "transit": "Признаки транзита",
+    "terminal": "Признаки наблюдаемого завершения",
+    "peripheral": "Без явной роли",
+}
 SCHEMAS = {
     "nodes.parquet": ("gid", "depth", "is_seed"),
     "edges.parquet": ("src", "dst", "sum_kzt", "n_tx", "depth"),
@@ -28,6 +36,46 @@ class DataError(ValueError):
 
 def clip(value):
     return min(1.0, max(0.0, float(value)))
+
+
+def amount_text(value):
+    if value >= 1_000_000:
+        return "{} млн KZT".format("{:.2f}".format(value / 1_000_000).replace(".", ","))
+    if value >= 1_000:
+        return "{} тыс. KZT".format("{:.1f}".format(value / 1_000).replace(".", ","))
+    return "{:.0f} KZT".format(value)
+
+
+def count_form(number, one, few, many):
+    if number % 100 in (11, 12, 13, 14):
+        return many
+    if number % 10 == 1:
+        return one
+    if number % 10 in (2, 3, 4):
+        return few
+    return many
+
+
+def describe_node(row, role):
+    text = "Получает от {} {} ({}), отправляет {} {}".format(
+        row.in_deg, count_form(row.in_deg, "плательщика", "плательщиков", "плательщиков"),
+        amount_text(row.in_kzt), row.out_deg,
+        count_form(row.out_deg, "получателю", "получателям", "получателям")
+    )
+    if row.truncated_by_depth:
+        pass
+    elif row.in_kzt > 0 and not row.is_seed:
+        text += " {:.0f}% полученного".format(100 * row.pass_through)
+    else:
+        text += " ({})".format(amount_text(row.out_kzt))
+    text += "; достижим от {} seed; связь с {} кластерами. {}.".format(
+        row.n_reaching_seed, row.n_other_clusters, ROLE_PHRASES[role]
+    )
+    if row.truncated_by_depth:
+        text += " 4-е колено, исходящие не наблюдаются — конечность не доказана."
+    if row.is_seed:
+        text += " У seed вход неполон."
+    return text
 
 
 def load_validate(data_dir):
@@ -162,11 +210,7 @@ def assign_roles(frame):
         else:
             role, strength = "peripheral", 0.2
         score = clip(strength - 0.2 * row.truncated_by_depth - 0.2 * (row.is_seed and role in ("coordinator", "consolidator", "terminal")))
-        explanation = "in={} out={} depth={} seed={} reach={} cross={} pass={} cut={}".format(
-            row.in_deg, row.out_deg, row.depth, int(row.is_seed), row.n_reaching_seed,
-            row.n_other_clusters, "n/a" if pd.isna(row.pass_through) else "{:.2f}".format(row.pass_through),
-            int(row.truncated_by_depth),
-        )
+        explanation = describe_node(row, role)
         roles.append(role)
         scores.append(score)
         evidence.append(explanation)
@@ -195,14 +239,25 @@ def exports(graph, frame, cluster_of):
                    "in_deg", "out_deg", "in_kzt", "out_kzt", "in_tx", "out_tx", "pagerank",
                    "pass_through", "betweenness", "n_reaching_seed", "n_other_clusters",
                    "depth", "is_seed", "truncated_by_depth"]].copy()
-    ranked = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).head(20)
+    roles[["role_score", "priority_score"]] = roles[["role_score", "priority_score"]].round(3)
+    ordered = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).reset_index(drop=True)
+    ranked = ordered.head(20)
     top = ranked[["gid", "role", "priority_score"]].copy().reset_index(drop=True)
+    top["priority_score"] = top.priority_score.round(3)
     top.insert(0, "rank", range(1, len(top) + 1))
-    top["why"] = [
-        "in_deg={} in_kzt={:.2f} betweenness={:.4f} reaching_seed={} role={} cut={}".format(
-            row.in_deg, row.in_kzt, row.betweenness, row.n_reaching_seed, row.role, int(row.truncated_by_depth)
-        ) for row in ranked.itertuples(index=False)
-    ]
+    reasons = []
+    for index, row in enumerate(ranked.itertuples(index=False)):
+        following = ordered.iloc[index + 1]
+        gap = row.priority_score - following.priority_score
+        comparison = (
+            "При равном приоритете выше следующего по gid."
+            if gap < 1e-12 else
+            "Выше следующего на {:.4f} по приоритету; вклад: вход {} плательщиков, {:.2f} KZT, {} seed, роль {}.".format(
+                gap, row.in_deg, row.in_kzt, row.n_reaching_seed, row.role
+            )
+        )
+        reasons.append(row.evidence + " " + comparison)
+    top["why"] = reasons
     internal = {idx: 0.0 for idx in set(cluster_of.values())}
     for src, dst, data in graph.edges(data=True):
         if cluster_of[src] == cluster_of[dst]:
@@ -210,15 +265,17 @@ def exports(graph, frame, cluster_of):
     clusters = []
     for cluster_id, group in frame.groupby("cluster_id", sort=True):
         leaders = group.sort_values(["priority_score", "gid"], ascending=[False, True]).head(5)
-        counts = group.role.value_counts()
-        dominant = sorted(counts[counts == counts.max()].index)[0]
+        leader = leaders.iloc[0]
         turnover = internal[cluster_id]
         clusters.append({
             "cluster_id": int(cluster_id), "n_nodes": len(group), "n_seed": int(group.is_seed.sum()),
             "sum_kzt_internal": round(turnover, 2),
             "top_gids": ",".join(str(gid) for gid in leaders.gid),
-            "hypothesis": "Гипотеза для проверки: преобладает роль {}; узлов {}, seed {}, внутренний оборот {:.2f} KZT.".format(
-                dominant, len(group), int(group.is_seed.sum()), turnover
+            "hypothesis": "Признаки группы для проверки: {} узлов, {} seed, внутренний оборот {}; "
+                          "консолидаторов {}, распределителей {}; крупнейший по приоритету gid {} ({}).".format(
+                len(group), int(group.is_seed.sum()), amount_text(turnover),
+                int((group.role == "consolidator").sum()), int((group.role == "distributor").sum()),
+                int(leader.gid), leader.role
             ),
         })
     return {"nodes_roles.csv": roles, "clusters.csv": pd.DataFrame(clusters), "top_nodes.csv": top}
@@ -236,7 +293,7 @@ def validate_outputs(outputs, frame):
         raise DataError("output: cluster summary invalid")
     if len(top) < 20 or top.gid.duplicated().any() or top["why"].isna().any() or list(top["rank"]) != list(range(1, len(top) + 1)):
         raise DataError("output: top ranking invalid")
-    expected = roles.sort_values(["priority_score", "gid"], ascending=[False, True]).head(len(top)).gid.tolist()
+    expected = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).head(len(top)).gid.tolist()
     if top.gid.tolist() != expected:
         raise DataError("output: top order invalid")
 

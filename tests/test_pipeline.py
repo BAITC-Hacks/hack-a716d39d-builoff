@@ -32,8 +32,8 @@ class PipelineTests(unittest.TestCase):
     def test_three_roles_explained_by_thresholds(self):
         for role in ("coordinator", "transit", "terminal"):
             row = self.frame.loc[self.frame.role == role].iloc[0]
-            self.assertIn("in={}".format(row.in_deg), row.evidence)
-            self.assertIn("out={}".format(row.out_deg), row.evidence)
+            self.assertIn("Получает от {}".format(row.in_deg), row.evidence)
+            self.assertIn("отправляет {}".format(row.out_deg), row.evidence)
             if role == "coordinator":
                 self.assertGreaterEqual(row.in_deg, 5)
                 self.assertGreaterEqual(row.out_deg, 10)
