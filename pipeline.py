@@ -14,6 +14,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from cluster_llm import generate_hypotheses
 from temporal import compute_temporal
 
 ROLES = ("coordinator", "consolidator", "distributor", "transit", "terminal", "peripheral")
@@ -314,6 +315,8 @@ def validate_outputs(outputs, frame):
         raise DataError("output: evidence or cluster references invalid")
     if clusters.n_nodes.sum() != len(frame) or clusters.n_seed.sum() != int(frame.is_seed.sum()) or (clusters.sum_kzt_internal < 0).any():
         raise DataError("output: cluster summary invalid")
+    if clusters.hypothesis.isna().any() or not clusters.hypothesis.str.len().gt(0).all():
+        raise DataError("output: cluster hypothesis missing")
     if len(top) < 20 or top.gid.duplicated().any() or top["why"].isna().any() or list(top["rank"]) != list(range(1, len(top) + 1)):
         raise DataError("output: top ranking invalid")
     expected = frame.sort_values(["priority_score", "gid"], ascending=[False, True]).head(len(top)).gid.tolist()
@@ -382,6 +385,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Analyse the July 2026 transfer network")
     parser.add_argument("--data", type=Path, default=Path("data"))
     parser.add_argument("--out", type=Path, default=Path("out"))
+    parser.add_argument("--no-llm", action="store_true", help="skip optional cluster hypotheses even with .env key")
     args = parser.parse_args(argv)
     started = time.perf_counter()
     try:
@@ -392,6 +396,12 @@ def main(argv=None):
         assign_roles(frame)
         rank_nodes(frame)
         result = exports(graph, frame, cluster_of)
+        if args.no_llm:
+            llm_status = "LLM skipped: --no-llm"
+        else:
+            result["clusters.csv"], llm_status = generate_hypotheses(
+                result["clusters.csv"], frame, Path(__file__).resolve().parent / ".env"
+            )
         validate_outputs(result, frame)
         result["graph.json"] = graph_export(graph, frame)
         validate_graph(result["graph.json"], frame, graph)
@@ -405,6 +415,7 @@ def main(argv=None):
         int(frame.truncated_by_depth.sum()), int(((frame.role == "terminal") & frame.truncated_by_depth).sum())
     ))
     print("wrote: {}".format(", ".join(str(args.out / name) for name in result)))
+    print(llm_status)
     print("elapsed_seconds={:.3f}".format(time.perf_counter() - started))
     return 0
 

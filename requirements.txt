@@ -3,3 +3,5 @@ pyarrow==17.0.0
 networkx==3.2.1
 numpy==1.26.4
 scipy==1.13.1
+openai==2.48.0
+python-dotenv==1.2.1

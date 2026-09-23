@@ -105,3 +105,21 @@ page_errors 0
 `evidence` содержит 200 символов. В Chrome карточка этого `gid` показала
 все три сигнала; ошибок JavaScript не было.
 [Скриншот карточки](screenshots/viewer-temporal.png).
+
+## Iteration 3 · T3.2
+
+Без `.env` команда завершилась успешно:
+
+```text
+nodes=2248 edges=3119 transactions=4840 seeds=81
+clusters=91 isolated=19 truncated=444 terminal_truncated=0
+wrote: out/nodes_roles.csv, out/clusters.csv, out/top_nodes.csv, out/graph.json
+LLM skipped: OPENAI_API_KEY absent in .env
+elapsed_seconds=1.829
+```
+
+В `clusters.csv` все 91 строки имеют `hypothesis_source=deterministic`.
+Mock-тест передал `OPENAI_MODEL` из временного `.env` в официальный SDK-вызов,
+проверил `strict: true`, принятие валидных `gid`/метрик и отклонение
+выдуманного `gid` и изменённого числа с возвратом к детерминированному тексту.
+Живой OpenAI-вызов: **NOT_VERIFIED**, потому что ключ не предоставлен.
