@@ -83,7 +83,7 @@ Persistence — только входные Parquet и выходные CSV/JSON
 
 ### I1 — расчёт и три CSV, до 14:50
 
-Priority: CORE | Status: NOT_STARTED | Dependencies: —  
+Priority: CORE | Status: DONE | Dependencies: —  
 Цель: один воспроизводимый расчёт из предоставленных Parquet; артефакт обрыва учтён сразу.  
 Scope: Python CLI поверх `starter/starter.py`, зависимости и Python CI, проверка входа, направленные метрики и betweenness, Louvain с изолятами, роли/скоры, приоритеты, три CSV, минимальная инструкция запуска.  
 Out of scope: HTML viewer, `graph.json`, временные паттерны, LLM.  
@@ -93,12 +93,12 @@ Verification: чистая установка; `python pipeline.py --data data -
 Fallback: если PageRank/SciPy даёт технический сбой, убрать PageRank из необязательных признаков, оставив все BR и три CSV; если Louvain недоступен, кластеризовать по слабосвязным компонентам с изолятами и явно обновить гипотезы/ограничения, не подменяя молча обязательную кластеризацию.
 
 Задачи:
-- T1.1 — зависимости, CLI и чистый запуск стартера | AC-01 | Verification: install + CLI до стадии метрик | Status: NOT_STARTED
-- T1.2 — проверка файлов и сохранение всех узлов, включая 19 изолятов | AC-01/02 | Verification: V-01–03 на реальных данных и испорченной копии | Status: NOT_STARTED
-- T1.3 — направленные метрики, компоненты, кластеры и их сводки | AC-03/04 | Verification: покрытие 2 248, сумма размеров кластеров, `n_seed`, внутренний оборот | Status: NOT_STARTED
-- T1.4 — роли по BR-05/11/12, включая обрыв и объяснения | AC-02/03 | Verification: 444 обрыва без `terminal`, пороги и разбор 3 случайных `gid` | Status: NOT_STARTED
-- T1.5 — priority по BR-07/13, три CSV и итоговая проверка | AC-01/02/04, часть AC-05 | Verification: схемы, диапазоны, сортировка, ≥ 20 строк, замер времени | Status: NOT_STARTED
-- T1.6 — минимальный README запуска, `.env.example` с только optional LLM-переменными, Python CI и коммит | AC-01 | Verification: запуск с чистой установкой по инструкции и CI | Status: NOT_STARTED
+- T1.1 — зависимости, CLI и чистый запуск стартера | AC-01 | Verification: install + CLI до стадии метрик | Status: DONE
+- T1.2 — проверка файлов и сохранение всех узлов, включая 19 изолятов | AC-01/02 | Verification: V-01–03 на реальных данных и испорченной копии | Status: DONE
+- T1.3 — направленные метрики, компоненты, кластеры и их сводки | AC-03/04 | Verification: покрытие 2 248, сумма размеров кластеров, `n_seed`, внутренний оборот | Status: DONE
+- T1.4 — роли по BR-05/11/12, включая обрыв и объяснения | AC-02/03 | Verification: 444 обрыва без `terminal`, пороги и разбор 3 случайных `gid` | Status: DONE
+- T1.5 — priority по BR-07/13, три CSV и итоговая проверка | AC-01/02/04, часть AC-05 | Verification: схемы, диапазоны, сортировка, ≥ 20 строк, замер времени | Status: DONE
+- T1.6 — минимальный README запуска, `.env.example` с только optional LLM-переменными, Python CI и коммит | AC-01 | Verification: запуск с чистой установкой по инструкции и CI | Status: DONE
 
 ### I2 — просмотр сети, до 16:00
 
