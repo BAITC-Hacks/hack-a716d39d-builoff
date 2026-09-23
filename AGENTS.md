@@ -30,7 +30,7 @@ AI-веб-прототип, который создаётся с нуля во �
 
 - Получено ТЗ → `docs/PROCESS.md` (выбор режима, этапы, таймбоксы, форматы документов).
 - Как строить онтологию → `docs/ONTOLOGY_GUIDE.md`.
-- Целевая архитектура, runtime pipeline, проверки → `docs/BASELINE.md`.
+- Архитектура текущего кейса, pipeline и проверки → `docs/PLAN.md`.
 - Текущий кейс → `docs/TZ.md`, `docs/ONTOLOGY.md`, `docs/PLAN.md`.
 
 Приоритет источников при противоречии: **ТЗ > явные уточнения пользователя > ONTOLOGY.md > PLAN.md > код.**
@@ -57,12 +57,12 @@ AI-веб-прототип, который создаётся с нуля во �
 
 ## Целевая структура и команды
 
-Структура создаётся в Iteration 1 (детали — `docs/BASELINE.md`):
+Структура для нового кейса определяется его ТЗ и планом. Исходный шаблон:
 
 ```
 server/               Node + TypeScript + Express: pipeline, input-check, agent, tools, SSE
 web/                  React + TypeScript + Vite
-docs/                 TZ.md, ONTOLOGY.md, PLAN.md, PROCESS.md, BASELINE.md, ONTOLOGY_GUIDE.md, EVIDENCE.md, screenshots/
+docs/                 TZ.md, ONTOLOGY.md, PLAN.md, PROCESS.md, ONTOLOGY_GUIDE.md, EVIDENCE.md, screenshots/
 .github/workflows/    ci.yml — typecheck, test, build
 ```
 
@@ -78,7 +78,7 @@ npm run start        # production запуск одного процесса
 npm run smoke        # e2e happy path против запущенного сервера
 ```
 
-Env — `.env.example` со всеми переменными из `docs/BASELINE.md` (`config.ts`): `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_AUX_MODEL`, `PORT`, `DATABASE_PATH`, лимиты и таймауты, флаги `ENABLE_*`. Ошибка конфигурации перечисляет имена отсутствующих переменных.
+Env — `.env.example` с переменными, нужными текущему кейсу. Обязательные переменные и поведение при их отсутствии определяются ТЗ и `docs/PLAN.md`.
 
 Не утверждай, что что-то работает, пока не запустил соответствующую проверку.
 
@@ -94,7 +94,7 @@ Env — `.env.example` со всеми переменными из `docs/BASELIN
 
 Baseline: TypeScript, Node, Express, React, Vite, OpenAI Responses API через официальный SDK (structured outputs со strict JSON schema), custom agent loop, tools = локальные TS-функции + Zod + registry, better-sqlite3, streaming через POST + fetch + ReadableStream (`text/event-stream`).
 
-**Runtime pipeline, input-check и output check реализуются по `docs/BASELINE.md`.** Отклонение — только с записью в `PLAN.md`.
+**Runtime pipeline и проверки реализуются по текущему ТЗ, онтологии и плану.** Архитектурное изменение фиксируется в `PLAN.md`.
 
 **Не добавлять без явной необходимости:** LangGraph, `@openai/agents`, собственный MCP server, multi-agent, векторные БД, Redis, очереди, event bus, microservices, CQRS, DI-framework, repository layer ради слоя, workflow engine, отдельный LLM-вызов проверки ответа по онтологии, regenerate-циклы, authentication, authorization, multi-tenancy.
 
@@ -171,7 +171,7 @@ AI-судья **не запускает приложение** — он оцен
 7. **Установка и запуск** — **если проект не запускается по этой инструкции, команда не допускается к отбору без права на пояснения (Положение 5.4.16)**: системные требования (версия Node), пошагово от `git clone` до открытого браузера с точными командами, `cp .env.example .env`, таблица переменных окружения, какой адрес открыть, как понять, что сервер поднялся (`/health`), dev и production отдельно, Docker если есть.
 8. **Как проверить решение** — подраздел «Доступ для проверки» (Положение 5.6.6: проверка без личных аккаунтов участников): как эксперт получает API-ключ — по договорённости с организаторами; что проверяется без ключа (`tools:check`, тесты, `/health`, edge cases валидации). Далее сценарий для жюри с ожидаемыми ответами; команды проверок и их вывод; таблица edge cases с фактическим поведением.
 9. **Данные и интеграции** — источники данных, API, внешние сервисы.
-10. **Ограничения** — что не реализовано, известные проблемы, `NOT_VERIFIED` где есть; честное ограничение лучше умолчания. Здесь же — использованные библиотеки, модели, датасеты и раскрытие заготовок (Положение 5.4.4): процессная документация `AGENTS.md`, `docs/PROCESS.md`, `docs/BASELINE.md`, `docs/ONTOLOGY_GUIDE.md` подготовлена до хакатона; весь код, онтология, план и домен созданы в соревновательной части.
+10. **Ограничения** — что не реализовано, известные проблемы, `NOT_VERIFIED` где есть; честное ограничение лучше умолчания. Здесь же — использованные библиотеки, модели, датасеты и раскрытие заготовок (Положение 5.4.4): процессная документация `AGENTS.md`, `docs/PROCESS.md`, `docs/ONTOLOGY_GUIDE.md` подготовлена до хакатона; весь код, онтология, план и домен созданы в соревновательной части.
 11. **Ссылка на deployed-версию** — URL или «не развёрнуто».
 
 Каждое утверждение проверяемо по коду. Финальный промпт на README — от организаторов, дополненный ссылкой на этот список.
